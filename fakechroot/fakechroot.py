@@ -14,12 +14,23 @@
 
 import os, glob, signal, shlex, subprocess, tempfile
 import shutil
-import platform
+if (2 <= sys.version_info.major
+	and 6 <= sys.version_info.major):
+   from platform import dist as linux_distribution
+else:
+	from platform import linux_distribution
 
 from .lock import Lock, Locked
 
 
-supported_distros = ('lucid', 'precise', 'quantal', 'raring')
+supported_distros = ('ubuntu', 'debian')
+# TODO: not used yet.
+supported_version = {
+	'debian': ['7.0', ],
+    'ubuntu': ['12.04', '12.10', ],
+}
+
+supported_distros = ('lucid', 'precise', 'quantal', 'raring', 'jessie', 'sid')
 
 
 class FakeChrootError(Exception):
@@ -50,9 +61,10 @@ class FakeChroot(object):
 
     def setUp(self):
         self.distro, self.distro_version, self.distro_codename = platform.dist()
-
-        if not self.distro_codename in supported_distros:
-            raise self.Exception('Unexpected and unsupported distro "%s"' % self.distro_codename)
+        if '/' in self.distro_version:
+            self.distro_version = self.distro_version.split('/')[0]
+        if not self.distro_version in supported_distros:
+            raise FakeChrootError('Unexpected and unsupported distro "%s"' % self.distro_version)
 
         dependencies = (
             "/usr/bin/fakeroot",
@@ -63,7 +75,7 @@ class FakeChroot(object):
 
         for dep in dependencies:
             if not os.path.exists(dep):
-                raise self.Exception("Need '%s' to run integration tests" % dep)
+                raise FakeChrootError("Need '%s' to run integration tests" % dep)
 
         # The first time we use the fixture per test run we might 'refresh' it
         # - that means making sure that it actually exists and that the latest code is
@@ -121,7 +133,7 @@ class FakeChroot(object):
 
     def run_commands(self, commands):
         for command in commands:
-            command = command % dict(base_image=self.base_path, distro=self.distro_codename)
+            command = command % dict(base_image=self.base_path, distro=self.distro_version)
             p = subprocess.Popen(shlex.split(command))
             if p.wait():
                 raise SystemExit("Command failed")
